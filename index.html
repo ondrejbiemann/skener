@@ -172,6 +172,13 @@
         <label class="btn" id="btnLabelLbl" hidden>🏷️ Vyfotit etiketu (složení a výživové údaje)
           <input type="file" id="labelInput" accept="image/*" capture="environment" multiple hidden>
         </label>
+        <div class="row" id="ownRow">
+          <label class="btn" id="btnOcrLbl">📄 Vyfotit složení
+            <input type="file" id="ocrInput" accept="image/*" capture="environment" multiple hidden>
+          </label>
+          <button class="btn" id="btnPaste" type="button">✍️ Vložit složení</button>
+        </div>
+        <p class="hint" id="ownHint">Výrobek není v databázi? Vyfoť nebo vlož jeho složení a vyhodnotím ho stejně.</p>
         <p class="hint" id="labelHint" hidden>Vyfoť složení a tabulku výživových údajů (můžeš vybrat víc fotek najednou). Text přečte Claude.</p>
       </div>
       <form id="manualForm" style="margin-top:0.9rem">
@@ -486,7 +493,7 @@ function evalDiet(d, p) {
     if (v === "yes") return { s: "ok", x: "" };
     if (v === "no") return { s: "bad", x: "Obsahuje živočišné složky" };
     if (v === "maybe") return { s: "warn", x: "Některé složky můžou být živočišné" };
-    return { s: "unk", x: "Složení není známé" };
+    return { s: "unk", x: p.hasIngredients ? "Nelze spolehlivě určit" : "Složení není známé" };
   }
   if (d.palm) {
     if (p.palm === "yes") return { s: "bad", x: "Obsahuje palmový olej" };
@@ -678,6 +685,11 @@ $("result").addEventListener("click", (e) => {
   const a = e.target.closest("[data-act]"); if (!a) return;
   if (a.dataset.act === "home") showHome();
   if (a.dataset.act === "scan") startLive();
+  if (a.dataset.act === "paste") showTextForm(a.dataset.code || "");
+  if (a.dataset.act === "edit" && current) {
+    const nm = /^Výrobek( z etikety| \d+)$/.test(current.name) ? "" : current.name;
+    showTextForm(current.code || "", current.ingredientsAll || current.ingredients || "", nm);
+  }
   if (a.dataset.act === "prof" && current) {
     activeId = a.dataset.pid; saveProfiles();
     const y = window.scrollY; renderProduct(current, true); window.scrollTo(0, y);
@@ -694,6 +706,7 @@ function verdictFor(prof, ev) {
 
 function renderProduct(p, keepScroll) {
   current = p;
+  const own = p.source === "ocr" || p.source === "text";
   $("home").hidden = true; const r = $("result"); r.hidden = false;
   const ev = {}; DIETS.forEach((d) => { ev[d.id] = evalDiet(d, p); });
   const act = activeProf();
@@ -800,14 +813,15 @@ function renderProduct(p, keepScroll) {
     ingrHtml = `${highlightCs(p.ingredientsCs)}
       <details class="more"><summary>🌐 Strojově přeloženo${LANG_FROM[p.lang] ? " z " + LANG_FROM[p.lang] : ""} · originál</summary>
       <div style="margin-top:0.4rem">${origHtml}</div></details>`;
+  } else if (own && origHtml) {
+    ingrHtml = highlightCs(p.ingredients) + (p.trIngr ? (needTr && !p.trTried ? `<p class="hint">Překládám do češtiny…</p>` : "") : "");
   } else if (origHtml) {
     ingrHtml = origHtml + (p.trIngr ? (needTr && !p.trTried
       ? `<p class="hint"><span class="spinner" style="font-size:0.85rem">Překládám do češtiny…</span></p>`
       : `<p class="hint">Překlad do češtiny se teď nepodařil.</p>`) : "");
   }
-  const srcBadge = p.source === "ai"
-    ? `<span class="src">Přečteno z fotky pomocí AI – ověř na obalu</span>`
-    : `<span class="src">Open Food Facts${p.code ? " · " + esc(p.code) : ""}</span>`;
+  const SRC = { ai: "Přečteno z fotky pomocí AI – ověř na obalu", ocr: "Přečteno z fotky – ověř na obalu", text: "Vložené složení" };
+  const srcBadge = `<span class="src">${SRC[p.source] || "Open Food Facts"}${p.code ? " · " + esc(p.code) : ""}</span>`;
   const usesIntol = act.diets.some((id) => DIET[id] && DIET[id].kw);
 
   r.innerHTML = `
@@ -836,9 +850,10 @@ function renderProduct(p, keepScroll) {
     </div>
     ${addCard}
     ${nutCard}
-    ${ingrHtml ? `<div class="card"><p class="section-title">Složení</p><div class="ingr">${ingrHtml}</div></div>` : ""}
+    ${ingrHtml ? `<div class="card"><p class="section-title">Složení${own && p.ingredientsAll && p.ingredients !== p.ingredientsAll ? " (česká část)" : ""}</p><div class="ingr">${ingrHtml}</div>
+      ${own ? `<button class="btn small" data-act="edit">✏️ Opravit text složení</button>` : ""}</div>` : ""}
     ${p.note ? `<div class="card"><p class="section-title">Poznámka</p><p>${esc(p.note)}</p></div>` : ""}
-    <p class="foot">Údaje ${p.source === "ai" ? "přečetla AI z fotky" : "pocházejí z komunitní databáze Open Food Facts"} a nemusí být úplné ani aktuální. Při celiakii nebo alergii vždy ověř složení přímo na obalu.
+    <p class="foot">${own ? "Vyhodnoceno jen podle textu složení, který může obsahovat chyby v rozpoznání. Výživové údaje se z textu neurčují." : "Údaje " + (p.source === "ai" ? "přečetla AI z fotky" : "pocházejí z komunitní databáze Open Food Facts") + " a nemusí být úplné ani aktuální."} Při celiakii nebo alergii vždy ověř složení přímo na obalu.
     ${p.source === "off" && p.code ? ` <a href="${OFF}/product/${encodeURIComponent(p.code)}" target="_blank" rel="noopener">Otevřít v Open Food Facts</a>` : ""}</p>
     <button class="btn primary" data-act="${canLive ? "scan" : "home"}">📷 Skenovat další</button>
     ${canLive ? `<button class="btn" data-act="home">↩︎ Zpět</button>` : ""}
@@ -851,7 +866,7 @@ function renderProduct(p, keepScroll) {
 const LANG_FROM = { de: "němčiny", en: "angličtiny", fr: "francouzštiny", it: "italštiny", es: "španělštiny", pl: "polštiny",
   hu: "maďarštiny", nl: "nizozemštiny", pt: "portugalštiny", ro: "rumunštiny", hr: "chorvatštiny", sl: "slovinštiny",
   da: "dánštiny", sv: "švédštiny", fi: "finštiny", el: "řečtiny", tr: "turečtiny", uk: "ukrajinštiny", ru: "ruštiny", bg: "bulharštiny" };
-const CS_ALLERG = /(^|[^a-zA-Z\u00C0-\u017F])((?:pšeni|žit|ječm|ovs|oves|špald|mlé|smetan|másl|syrovátk|sýr|tvaroh|laktóz|kasein|jogurt|vejc|vaječ|sój|arašíd|ořech|lískov|mandl|kešu|pistáci|sezam|celer|hořčic|ryb(?!íz)|siřičitan|lupin|korýš|měkkýš)[a-zA-Z\u00C0-\u017F]*)/gi;
+const CS_ALLERG = /(^|[^a-zA-Z\u00C0-\u017F])((?:pšeni|žit|ječm|ovs|oves|špald|mlé|smetan|másl|syrovátk|sýr|tvaroh|laktóz|kasein|jogurt|vejc|vaječ|sój|arašíd|ořech|oříšk|lísk|mandl|kešu|pistáci|sezam|celer|hořčic|ryb(?!íz)|siřičitan|lupin|korýš|měkkýš)[a-zA-Z\u00C0-\u017F]*)/gi;
 function highlightCs(t) {
   const keep = [];
   const prot = esc(t).replace(/kakaov\S* másl\S*|bambuck\S* másl\S*|kyselin\S* mléčn\S*|mléčnan\S*|kokosov\S* mlék\S*/gi, (m) => { keep.push(m); return "\u0000" + (keep.length - 1) + "\u0000"; });
@@ -974,14 +989,16 @@ async function lookup(code) {
       `<p style="font-size:1.1rem"><b>Kód ${esc(code)}</b></p>
        <p>Databázi potravin se teď nepodařilo otevřít${aiOk ? " (v této verzi aplikace k ní není přístup)" : " – zkontroluj připojení k internetu"}.</p>
        <a class="btn" href="${OFF}/product/${code}" target="_blank" rel="noopener">🌐 Otevřít produkt v Open Food Facts</a>`,
-      aiOk ? labelButtonHtml() : "");
+      aiOk ? labelButtonHtml() : ownButtonsHtml(code));
     return;
   }
   if (!data || data.status === 0 || !data.product) {
+    const own = store.get("mydb", {})[code];
+    if (own) { try { const p = unpack(own); addHistory(p); renderProduct(p); return; } catch {} }
     showMessage(
       `<p style="font-size:1.1rem"><b>Kód ${esc(code)}</b> v databázi zatím není.</p>
-       <p class="hint">Produkt můžeš do Open Food Facts přidat a pomoct tak ostatním.</p>`,
-      (aiOk ? labelButtonHtml() : "") +
+       <p class="hint">Vyfoť složení na obalu (nebo ho vlož jako text) a vyhodnotím ho. Příště si ho už pamatuju.</p>`,
+      (aiOk ? labelButtonHtml() : ownButtonsHtml(code)) +
       `<a class="btn" href="${OFF}/cgi/product.pl?type=add&code=${code}" target="_blank" rel="noopener">➕ Přidat do databáze</a>`);
     return;
   }
@@ -1079,6 +1096,7 @@ $("result").addEventListener("change", (e) => {
   const t = e.target;
   if (t.matches("[data-photo-input]") && t.files.length) handleBarcodePhoto(t.files[0]);
   if (t.matches("[data-label-input]") && t.files.length) readLabel([...t.files]);
+  if (t.matches("[data-ocr-input]") && t.files.length) readLabelOcr([...t.files], t.dataset.code || "");
 });
 $("manualForm").onsubmit = (e) => {
   e.preventDefault(); const v = $("manualCode").value.trim(); if (!v) return;
@@ -1183,6 +1201,124 @@ function updateLiveButton() { $("btnLive").hidden = !canLive; if (!canLive) $("b
 updateLiveButton();
 getDetector(); // předehřát čtečku, ať první sken proběhne hned
 
+/* ================= Výrobky mimo databázi: rozpoznání textu z fotky / vložený text ================= */
+const OCR_CDN = window.__ocrCdn || "https://cdn.jsdelivr.net/npm/";
+let ocrWorkerP = null, ocrProgress = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("script")); document.head.appendChild(s); });
+}
+function getOcr() {
+  if (!ocrWorkerP) ocrWorkerP = (async () => {
+    if (!window.Tesseract) await loadScript(OCR_CDN + "tesseract.js@7.0.0/dist/tesseract.min.js");
+    const opts = {
+      workerPath: OCR_CDN + "tesseract.js@7.0.0/dist/worker.min.js",
+      corePath: OCR_CDN + "tesseract.js-core@7.0.0",
+      logger: (m) => { if (ocrProgress) ocrProgress(m); },
+    };
+    if (window.__ocrLangPath) opts.langPath = window.__ocrLangPath;
+    return await Tesseract.createWorker(["ces", "deu", "eng"], 1, opts);
+  })().catch((e) => { ocrWorkerP = null; throw e; });
+  return ocrWorkerP;
+}
+function ocrCanvas(img) {
+  const c = scaledCanvas(img, 2400);
+  const ctx = c.getContext("2d");
+  const d = ctx.getImageData(0, 0, c.width, c.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) { const g = 0.299 * a[i] + 0.587 * a[i + 1] + 0.114 * a[i + 2]; a[i] = a[i + 1] = a[i + 2] = g; }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+function setBusyText(t) { const el = document.querySelector("#result .spinner"); if (el) el.textContent = t; }
+async function readLabelOcr(files, code) {
+  showBusy("Připravuji rozpoznávání textu…");
+  ocrProgress = (m) => {
+    if (/load|initializ/i.test(m.status || "")) setBusyText("Stahuji jazyková data (jen poprvé, pár MB)…");
+    else if (m.status === "recognizing text") setBusyText("Čtu text z fotky… " + Math.round((m.progress || 0) * 100) + " %");
+  };
+  try {
+    const worker = await getOcr();
+    let text = "";
+    for (let i = 0; i < Math.min(files.length, 4); i++) {
+      const img = await loadImage(files[i]);
+      const { data } = await worker.recognize(ocrCanvas(img));
+      text += (text ? "\n" : "") + (data && data.text || "");
+    }
+    text = text.replace(/[ \t]+/g, " ").replace(/-\n(?=[a-zá-ž])/gi, "").replace(/\n+/g, " ").trim();
+    if (text.replace(/[^a-zA-ZÀ-ſ]/g, "").length < 15) {
+      showMessage(`<p style="font-size:1.1rem">Na fotce se nepodařilo přečíst text.</p>
+        <p class="hint">Vyfoť složení zblízka, rovně a ostře, ideálně na světle a bez odlesků.</p>`, ownButtonsHtml(code));
+      return;
+    }
+    const p = fromText({ code, text, source: "ocr" });
+    saveOwn(p); addHistory(p); renderProduct(p);
+  } catch (e) {
+    showMessage(`<p style="font-size:1.1rem">Rozpoznávání textu se nepodařilo spustit.</p>
+      <p class="hint">Zkontroluj připojení k internetu. Případně můžeš složení vložit jako text.</p>`, pasteButtonHtml(code));
+  } finally { ocrProgress = null; }
+}
+function czechSection(text) {
+  const st = text.search(/slo[žz]en[ií]\s*:/i);
+  if (st < 0) return null;
+  const rest = text.slice(st + 8);
+  const end = rest.search(/zlo[žz]enie\s*:|zutaten\s*:|[öo]sszetev[őo]k\s*:|ingredients\s*:|sk[łl]ad\s*:|ingr[ée]dients\s*:|ingredienti\s*:|\(sk\)|\bSK\b\s/i);
+  return text.slice(st, end >= 0 ? st + 8 + end : undefined).trim();
+}
+const KW_MEAT = /\bmas[oa]\b|vepr|hovez|kurec|kuraci|krut|slanin|sunk|salam|klobas|zelatin|gelatin|zelatina|fleisch|schwein|\brind|huhn|speck|schinken|\bmeat|\bpork|\bbeef|chicken|\bham\b|bacon|\blard\b|\bsadl|\bloj\b|schmalz|e120|karmin|carmine/;
+const KW_ANIMAL = /(^|[^a-z])med(u|em)?([^a-z]|$)|honey|honig|e901|vcel\w* vosk|e904|selak|shellac/;
+function fromText({ code = "", name = "", text, source }) {
+  const cs = czechSection(text);
+  const shown = cs || text;
+  const p = {
+    source, code, name: name || (code ? "Výrobek " + code : "Výrobek z etikety"),
+    brand: "", quantity: "", image: "", ingredients: shown, ingredientsAll: text,
+    allergens: new Set(), traces: new Set(), labels: new Set(), vegan: "unknown", vegetarian: "unknown",
+    hasIngredients: !!text.trim(), nutr: {}, serv: {}, servingSize: "", levels: null, nutriscore: "", nova: "",
+    lang: "auto", trIngr: !cs && !/[ěřů]/i.test(text), trName: false,
+  };
+  enrich(p, { rawText: cs ? text : "" });
+  const t = norm(text);
+  const animal = ["milk", "eggs", "fish", "crustaceans", "molluscs"].some((a) => p.kwAllergens.has(a)) || KW_ANIMAL.test(t);
+  const meat = KW_MEAT.test(t) || p.kwAllergens.has("fish") || p.kwAllergens.has("crustaceans");
+  p.vegetarian = meat ? "no" : "unknown";
+  p.vegan = meat || animal ? "no" : "unknown";
+  return p;
+}
+function saveOwn(p) {
+  if (!p.code) return;
+  const db = store.get("mydb", {});
+  const { trBusy, ...rest } = pack(p);
+  db[p.code] = rest;
+  const keys = Object.keys(db); if (keys.length > 200) delete db[keys[0]];
+  store.set("mydb", db);
+}
+function ownButtonsHtml(code) {
+  return `<label class="btn primary">📄 Vyfotit složení
+      <input type="file" accept="image/*" capture="environment" multiple hidden data-ocr-input data-code="${esc(code || "")}"></label>
+    ${pasteButtonHtml(code)}`;
+}
+function pasteButtonHtml(code) {
+  return `<button class="btn" data-act="paste" data-code="${esc(code || "")}">✍️ Vložit text složení</button>`;
+}
+function showTextForm(code = "", text = "", name = "") {
+  $("home").hidden = true; const r = $("result"); r.hidden = false;
+  r.innerHTML = `
+    <form class="card" id="textForm">
+      <p class="section-title">Složení výrobku</p>
+      <p class="hint" style="margin-bottom:0.6rem">Tip pro iPhone: otevři Fotoaparát, namiř na složení a klepni na ikonu textu vpravo dole (Živý text). Text označ, zkopíruj a vlož sem.</p>
+      <input type="text" id="tfName" placeholder="Název (nepovinné)" value="${esc(name)}" autocomplete="off">
+      <textarea id="tfText" rows="8" style="width:100%;margin-top:0.5rem;font-size:1rem;padding:0.7rem;border-radius:0.8rem;border:2px solid var(--line);background:var(--bg);color:var(--ink);font-family:inherit" placeholder="Sem vlož nebo napiš složení…">${esc(text)}</textarea>
+      <button type="submit" class="btn primary">Vyhodnotit</button>
+      <button type="button" class="btn" data-act="home">↩︎ Zpět</button>
+    </form>`;
+  $("textForm").onsubmit = (e) => {
+    e.preventDefault();
+    const t = $("tfText").value.trim(); if (!t) { $("tfText").focus(); return; }
+    const p = fromText({ code, name: $("tfName").value.trim(), text: t, source: "text" });
+    saveOwn(p); addHistory(p); renderProduct(p);
+  };
+  window.scrollTo(0, 0);
+}
+
 /* ================= Čtení etikety pomocí Clauda (jen ve verzi na claude.ai) ================= */
 let aiOk = false, sampleFn = null;
 const AI_PROMPT = `Jsi asistent pro lidi s potravinovými intolerancemi. Na přiložených fotkách je obal potraviny (složení, výživové údaje, případně přední strana).
@@ -1215,6 +1351,7 @@ async function initAI() {
     if (!imagesOk) return;
     sampleFn = s; aiOk = true;
     $("btnLabelLbl").hidden = false; $("labelHint").hidden = false;
+    $("ownRow").hidden = true; $("ownHint").hidden = true;
     updateNotice();
   } catch {}
 }
@@ -1266,6 +1403,8 @@ async function readLabel(files) {
     showMessage(`<p style="font-size:1.1rem">${esc(msg)}</p>`, aiOk ? labelButtonHtml() : "");
   }
 }
+$("ocrInput").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; if (fl.length) readLabelOcr(fl, ""); };
+$("btnPaste").onclick = () => showTextForm();
 $("labelInput").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; if (fl.length) readLabel(fl); };
 
 /* ================= Upozornění na dostupnost databáze ================= */
