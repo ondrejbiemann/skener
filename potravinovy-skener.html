@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f5132">
+<title>Potravinový skener</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --card: #ffffff;
+    --ink: #161616;
+    --muted: #5b5b5b;
+    --line: #e2dfd6;
+    --accent: #0f5132;
+    --accent-ink: #ffffff;
+    --ok: #146c2e;  --ok-bg: #e3f4e7;
+    --bad: #b3261e; --bad-bg: #fbe4e2;
+    --warn: #8a5a00; --warn-bg: #fff1cc;
+    --unk: #4a4a4a; --unk-bg: #ececec;
+    --lvl-low: #2e9d4f; --lvl-mod: #e0a100; --lvl-high: #d23b2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121412; --card: #1c1f1c; --ink: #f2f2ef; --muted: #b0b3ad; --line: #2f342f;
+      --accent: #5fd08a; --accent-ink: #0b1a10;
+      --ok: #7fe0a0; --ok-bg: #173323; --bad: #ff9b92; --bad-bg: #3a1a18;
+      --warn: #ffd36b; --warn-bg: #3a2e10; --unk: #cfcfcf; --unk-bg: #2a2a2a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 20px; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0.8rem 0.8rem 3rem; }
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    padding: 0.2rem 0 0.8rem;
+  }
+  header.top h1 { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
+  .sizer { display: flex; gap: 0.3rem; }
+  .sizer button {
+    min-width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-weight: 700; font-size: 0.9rem; cursor: pointer;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 1rem;
+    padding: 0.9rem; margin-bottom: 0.8rem;
+  }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%;
+    min-height: 3.2rem; padding: 0.6rem 1rem; border-radius: 0.9rem; border: 2px solid var(--accent);
+    background: var(--card); color: var(--accent); font-size: 1rem; font-weight: 700; cursor: pointer;
+    text-align: center; margin-top: 0.6rem; text-decoration: none;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); min-height: 4rem; font-size: 1.15rem; }
+  .btn[hidden], [hidden] { display: none !important; }
+  .row { display: flex; gap: 0.5rem; }
+  .row > * { flex: 1; }
+  input[type=text], input[type=tel] {
+    width: 100%; font-size: 1.1rem; padding: 0.7rem 0.8rem; border-radius: 0.8rem;
+    border: 2px solid var(--line); background: var(--bg); color: var(--ink); letter-spacing: 0.05em;
+  }
+  .hint { color: var(--muted); font-size: 0.8rem; margin: 0.4rem 0 0; }
+  .section-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 0.5rem; font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip {
+    border: 2px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 999px;
+    padding: 0.35rem 0.75rem; font-size: 0.85rem; cursor: pointer; font-weight: 600;
+  }
+  .chip.on { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+  .notice { border-radius: 0.8rem; padding: 0.7rem 0.8rem; font-size: 0.85rem; margin-bottom: 0.8rem; background: var(--warn-bg); color: var(--ink); }
+  .notice.err { background: var(--bad-bg); }
+  .spinner { display: flex; align-items: center; gap: 0.7rem; font-size: 1rem; }
+  .spinner::before {
+    content: ""; width: 1.4rem; height: 1.4rem; border-radius: 50%;
+    border: 3px solid var(--line); border-top-color: var(--accent); animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Výsledek */
+  .prod { display: flex; gap: 0.8rem; align-items: flex-start; }
+  .prod img { width: 5rem; height: 5rem; object-fit: contain; border-radius: 0.6rem; background: #fff; flex: none; }
+  .prod h2 { font-size: 1.45rem; line-height: 1.2; margin: 0 0 0.2rem; }
+  .prod .meta { color: var(--muted); font-size: 0.9rem; }
+  .src { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--unk-bg); color: var(--unk); margin-top: 0.35rem; }
+  .verdict {
+    border-radius: 1rem; padding: 0.9rem 1rem; margin-bottom: 0.8rem; font-weight: 800;
+    font-size: 1.5rem; line-height: 1.2; display: flex; gap: 0.6rem; align-items: center;
+  }
+  .verdict small { display: block; font-size: 0.85rem; font-weight: 600; margin-top: 0.2rem; }
+  .verdict .ico { font-size: 2rem; flex: none; }
+  .ok { background: var(--ok-bg); color: var(--ok); }
+  .bad { background: var(--bad-bg); color: var(--bad); }
+  .warn { background: var(--warn-bg); color: var(--warn); }
+  .unk { background: var(--unk-bg); color: var(--unk); }
+  .diets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.5rem), 1fr)); gap: 0.5rem; }
+  .diet { border-radius: 0.8rem; padding: 0.6rem 0.7rem; position: relative; }
+  .diet .dn { font-size: 0.85rem; font-weight: 700; }
+  .diet .ds { font-size: 1.15rem; font-weight: 800; margin-top: 0.1rem; }
+  .diet .dx { font-size: 0.72rem; font-weight: 500; margin-top: 0.2rem; opacity: 0.9; }
+  .diet.mine { outline: 3px solid currentColor; outline-offset: -3px; }
+  .allg { font-size: 1rem; margin: 0.3rem 0; }
+  .allg b { font-weight: 800; }
+  table.nut { width: 100%; border-collapse: collapse; font-size: 1.05rem; }
+  table.nut th, table.nut td { padding: 0.5rem 0.2rem; border-bottom: 1px solid var(--line); text-align: right; vertical-align: middle; }
+  table.nut th:first-child, table.nut td:first-child { text-align: left; }
+  table.nut thead th { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  table.nut tr.sub td:first-child { padding-left: 1.1rem; color: var(--muted); font-size: 0.95rem; }
+  table.nut td.v { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .lvl { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; margin-left: 0.35rem; vertical-align: middle; }
+  .lvl.low { background: var(--lvl-low); } .lvl.moderate { background: var(--lvl-mod); } .lvl.high { background: var(--lvl-high); }
+  .lvl-legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.5rem; }
+  .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+  .badge { font-weight: 800; border-radius: 0.6rem; padding: 0.35rem 0.7rem; font-size: 0.9rem; color: #fff; }
+  .ns-a { background: #038141; } .ns-b { background: #85bb2f; } .ns-c { background: #fecb02; color: #222; } .ns-d { background: #ee8100; } .ns-e { background: #e63e11; }
+  .nova { background: #555; }
+  .ingr { font-size: 1.05rem; line-height: 1.5; }
+  .ingr mark { background: var(--warn-bg); color: var(--ink); font-weight: 800; padding: 0 0.15rem; border-radius: 0.2rem; }
+  .foot { font-size: 0.75rem; color: var(--muted); }
+  .hist { list-style: none; padding: 0; margin: 0; }
+  .hist li { border-bottom: 1px solid var(--line); }
+  .hist li:last-child { border-bottom: 0; }
+  .hist button { all: unset; display: flex; justify-content: space-between; gap: 0.6rem; width: 100%; padding: 0.55rem 0; cursor: pointer; font-size: 0.95rem; }
+  .hist .t { color: var(--muted); font-size: 0.75rem; flex: none; align-self: center; }
+  a { color: var(--accent); }
+
+  /* Živý skener */
+  #scanner { position: fixed; inset: 0; background: #000; z-index: 50; display: flex; flex-direction: column; }
+  #scanner video { flex: 1; width: 100%; height: 100%; object-fit: cover; }
+  #scanner .frame {
+    position: absolute; left: 8%; right: 8%; top: 35%; height: 22%;
+    border: 4px solid #fff; border-radius: 1rem; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.45); pointer-events: none;
+  }
+  #scanner .bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  #scanner .msg { color: #fff; text-align: center; font-size: 1rem; font-weight: 600; text-shadow: 0 1px 3px #000; }
+  #scanner .btn { background: #fff; color: #000; border-color: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>🔎 Potravinový skener</h1>
+    <div class="sizer" aria-label="Velikost písma">
+      <button id="fsDown" aria-label="Zmenšit písmo">A−</button>
+      <button id="fsUp" aria-label="Zvětšit písmo">A+</button>
+    </div>
+  </header>
+
+  <div id="dbNotice" class="notice" hidden></div>
+
+  <!-- Domovská obrazovka -->
+  <section id="home">
+    <div class="card">
+      <button class="btn primary" id="btnLive">📷 Naskenovat čárový kód</button>
+      <label class="btn" id="btnPhotoLbl">🖼️ Vyfotit čárový kód
+        <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="btn" id="btnLabelLbl" hidden>🏷️ Vyfotit etiketu (složení a výživové údaje)
+        <input type="file" id="labelInput" accept="image/*" capture="environment" multiple hidden>
+      </label>
+      <p class="hint" id="labelHint" hidden>Vyfoť složení a tabulku výživových údajů (můžeš vybrat víc fotek najednou). Text přečte Claude.</p>
+      <form id="manualForm" style="margin-top:0.9rem">
+        <div class="row">
+          <input type="tel" id="manualCode" inputmode="numeric" pattern="[0-9]*" placeholder="Číslo pod kódem" autocomplete="off">
+          <button class="btn" style="margin-top:0;flex:0 0 auto;width:auto">Hledat</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Moje omezení</p>
+      <div class="chips" id="profileChips"></div>
+      <p class="hint">Vybraná omezení se u každé potraviny vyhodnotí jako první.</p>
+    </div>
+
+    <div class="card" id="histCard" hidden>
+      <p class="section-title">Naposledy hledané</p>
+      <ul class="hist" id="histList"></ul>
+    </div>
+  </section>
+
+  <!-- Výsledek -->
+  <section id="result" hidden></section>
+</div>
+
+<div id="scanner" hidden>
+  <video id="video" playsinline muted></video>
+  <div class="frame"></div>
+  <div class="bar">
+    <div class="msg" id="scanMsg">Namiř kameru na čárový kód</div>
+    <button class="btn" id="scanCancel">Zrušit</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+(() => {
+"use strict";
+
+/* ---------- Pomocné ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("pskener:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("pskener:" + k, JSON.stringify(v)); } catch {} },
+};
+const OFF = "https://world.openfoodfacts.org";
+const FIELDS = [
+  "code", "product_name", "product_name_cs", "generic_name", "generic_name_cs", "brands", "quantity",
+  "image_front_small_url", "image_front_url", "nutriments", "nutrient_levels", "allergens_tags", "traces_tags",
+  "labels_tags", "ingredients_analysis_tags", "ingredients_text", "ingredients_text_cs", "nutriscore_grade",
+  "nova_group", "serving_size", "states_tags",
+].join(",");
+
+/* ---------- Velikost písma ---------- */
+let fs = store.get("fs", 20);
+const applyFs = () => { document.documentElement.style.fontSize = fs + "px"; };
+applyFs();
+$("fsUp").onclick = () => { fs = Math.min(34, fs + 2); applyFs(); store.set("fs", fs); };
+$("fsDown").onclick = () => { fs = Math.max(14, fs - 2); applyFs(); store.set("fs", fs); };
+
+/* ---------- Diety a alergeny ---------- */
+const ALLERGEN_CS = {
+  "gluten": "lepek", "milk": "mléko", "eggs": "vejce", "nuts": "skořápkové plody (ořechy)", "peanuts": "arašídy",
+  "soybeans": "sója", "fish": "ryby", "crustaceans": "korýši", "molluscs": "měkkýši", "celery": "celer",
+  "mustard": "hořčice", "sesame-seeds": "sezam", "sulphur-dioxide-and-sulphites": "oxid siřičitý a siřičitany",
+  "lupin": "vlčí bob (lupina)",
+};
+const DIETS = [
+  { id: "gluten",  name: "Celiakie",   icon: "🌾", allergen: "gluten",   free: ["gluten-free", "no-gluten"], what: "lepek" },
+  { id: "lactose", name: "Laktóza",    icon: "🥛", allergen: "milk",     free: ["lactose-free", "no-lactose"], what: "mléko (laktózu)" },
+  { id: "milk",    name: "Alergie na mléko", icon: "🍼", allergen: "milk", free: ["no-milk", "dairy-free", "milk-free"], what: "mléčnou bílkovinu" },
+  { id: "eggs",    name: "Vejce",      icon: "🥚", allergen: "eggs",     free: ["no-eggs", "egg-free"], what: "vejce" },
+  { id: "nuts",    name: "Ořechy",     icon: "🌰", allergen: "nuts",     free: ["no-nuts", "nut-free"], what: "ořechy" },
+  { id: "peanuts", name: "Arašídy",    icon: "🥜", allergen: "peanuts",  free: ["no-peanuts", "peanut-free"], what: "arašídy" },
+  { id: "soy",     name: "Sója",       icon: "🫘", allergen: "soybeans", free: ["no-soy", "soy-free"], what: "sóju" },
+  { id: "vegetarian", name: "Vegetarián", icon: "🥕", analysis: "vegetarian" },
+  { id: "vegan",   name: "Vegan",      icon: "🌱", analysis: "vegan" },
+];
+const RANK = { bad: 3, warn: 2, unk: 1, ok: 0 };
+const STATUS_TXT = { ok: "Vhodné", bad: "Nevhodné", warn: "Pozor", unk: "Nevíme" };
+
+let profile = new Set(store.get("profile", ["gluten", "lactose"]));
+function renderProfile() {
+  $("profileChips").innerHTML = DIETS.map((d) =>
+    `<button class="chip ${profile.has(d.id) ? "on" : ""}" data-id="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("");
+}
+$("profileChips").onclick = (e) => {
+  const b = e.target.closest("[data-id]"); if (!b) return;
+  const id = b.dataset.id;
+  profile.has(id) ? profile.delete(id) : profile.add(id);
+  store.set("profile", [...profile]); renderProfile();
+};
+renderProfile();
+
+function evalDiet(d, p) {
+  if (d.analysis) {
+    const v = p[d.analysis];
+    if (v === "yes") return { s: "ok", x: "" };
+    if (v === "no") return { s: "bad", x: "Obsahuje živočišné složky" };
+    if (v === "maybe") return { s: "warn", x: "Některé složky můžou být živočišné" };
+    return { s: "unk", x: "Složení není známé" };
+  }
+  const has = p.allergens.has(d.allergen);
+  const freeLbl = d.free.some((f) => p.labels.has(f));
+  if (d.id === "lactose" && has && freeLbl) return { s: "ok", x: "Bez laktózy (ale obsahuje mléko)" };
+  if (has) return { s: "bad", x: "Obsahuje " + d.what };
+  if (freeLbl) return { s: "ok", x: "Označeno jako „bez“" };
+  if (p.traces.has(d.allergen)) return { s: "warn", x: "Může obsahovat stopy" };
+  if (p.hasIngredients) return { s: "ok", x: "Alergen v údajích není" };
+  return { s: "unk", x: "Chybí složení" };
+}
+
+/* ---------- Normalizace dat ---------- */
+const stripTag = (t) => String(t).replace(/^[a-z]{2}:/, "");
+function fromOFF(prod, code) {
+  const n = prod.nutriments || {};
+  const pick = (k, suf) => { const v = n[k + suf]; return v === "" || v == null || isNaN(+v) ? null : +v; };
+  const nutr = {}, serv = {};
+  const keys = { kj: "energy-kj", kcal: "energy-kcal", fat: "fat", sat: "saturated-fat", carbs: "carbohydrates", sugars: "sugars", fiber: "fiber", protein: "proteins", salt: "salt" };
+  for (const [k, offk] of Object.entries(keys)) { nutr[k] = pick(offk, "_100g"); serv[k] = pick(offk, "_serving"); }
+  if (nutr.kj == null && n.energy_100g != null && (n.energy_unit || "kJ") === "kJ") nutr.kj = +n.energy_100g;
+  if (nutr.kcal == null && nutr.kj != null) nutr.kcal = Math.round(nutr.kj / 4.184);
+  const ana = new Set((prod.ingredients_analysis_tags || []).map(stripTag));
+  const labels = new Set((prod.labels_tags || []).map(stripTag));
+  const tri = (key) => labels.has(key) || ana.has(key) ? "yes" : ana.has("non-" + key) ? "no" : ana.has("maybe-" + key) ? "maybe" : "unknown";
+  const ingr = prod.ingredients_text_cs || prod.ingredients_text || "";
+  const states = new Set((prod.states_tags || []).map(stripTag));
+  return {
+    source: "off", code: prod.code || code,
+    name: prod.product_name_cs || prod.product_name || prod.generic_name_cs || prod.generic_name || "Neznámý název",
+    brand: prod.brands || "", quantity: prod.quantity || "",
+    image: prod.image_front_small_url || prod.image_front_url || "",
+    ingredients: ingr,
+    allergens: new Set((prod.allergens_tags || []).map(stripTag)),
+    traces: new Set((prod.traces_tags || []).map(stripTag)),
+    labels, vegan: tri("vegan"), vegetarian: tri("vegetarian"),
+    hasIngredients: !!ingr.trim() || states.has("ingredients-completed"),
+    nutr, serv, servingSize: prod.serving_size || "",
+    levels: prod.nutrient_levels || null,
+    nutriscore: /^[a-e]$/.test(prod.nutriscore_grade || "") ? prod.nutriscore_grade : "",
+    nova: prod.nova_group || "",
+  };
+}
+function levelsFrom(nutr) {
+  const lv = (v, lo, hi) => v == null ? null : v <= lo ? "low" : v > hi ? "high" : "moderate";
+  return { "fat": lv(nutr.fat, 3, 17.5), "saturated-fat": lv(nutr.sat, 1.5, 5), "sugars": lv(nutr.sugars, 5, 22.5), "salt": lv(nutr.salt, 0.3, 1.5) };
+}
+// pro uložení do historie (Set -> pole)
+const pack = (p) => ({ ...p, allergens: [...p.allergens], traces: [...p.traces], labels: [...p.labels] });
+const unpack = (p) => ({ ...p, allergens: new Set(p.allergens), traces: new Set(p.traces), labels: new Set(p.labels) });
+
+/* ---------- Zobrazení výsledku ---------- */
+const fmt = (v, dec = 1) => v == null ? "–" : (Math.round(v * 10 ** dec) / 10 ** dec).toLocaleString("cs-CZ");
+function showHome() {
+  $("result").hidden = true; $("home").hidden = false; renderHistory(); window.scrollTo(0, 0);
+}
+function showBusy(text) {
+  $("home").hidden = true; const r = $("result"); r.hidden = false;
+  r.innerHTML = `<div class="card"><div class="spinner">${esc(text)}</div></div>`;
+  window.scrollTo(0, 0);
+}
+function showMessage(html, extraButtons = "") {
+  $("home").hidden = true; const r = $("result"); r.hidden = false;
+  r.innerHTML = `<div class="card">${html}${extraButtons}<button class="btn primary" data-act="home">↩︎ Zpět</button></div>`;
+  window.scrollTo(0, 0);
+}
+$("result").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  if (a.dataset.act === "home") showHome();
+  if (a.dataset.act === "scan") startLive();
+});
+
+function renderProduct(p) {
+  $("home").hidden = true; const r = $("result"); r.hidden = false;
+  const evals = DIETS.map((d) => ({ d, ...evalDiet(d, p), mine: profile.has(d.id) }));
+  evals.sort((a, b) => (b.mine - a.mine));
+  const mine = evals.filter((e) => e.mine);
+
+  // Celkový verdikt pro můj profil
+  let verdict = "";
+  if (mine.length) {
+    const worst = mine.reduce((w, e) => RANK[e.s] > RANK[w] ? e.s : w, "ok");
+    const names = (s) => mine.filter((e) => e.s === s).map((e) => e.d.name).join(", ");
+    const V = {
+      ok:   ["✅", "Pro tebe vhodné", "Podle údajů: " + mine.map((e) => e.d.name).join(", ")],
+      bad:  ["⛔", "Pro tebe nevhodné", names("bad") + (names("warn") ? " · pozor: " + names("warn") + " (stopy)" : "")],
+      warn: ["⚠️", "Pozor", names("warn") + " – může obsahovat stopy"],
+      unk:  ["❓", "Nelze ověřit", "Chybí údaje o složení – zkontroluj obal"],
+    }[worst];
+    verdict = `<div class="verdict ${worst}"><span class="ico">${V[0]}</span><div>${V[1]}<small>${esc(V[2])}</small></div></div>`;
+  }
+
+  const dietTiles = evals.map((e) => `
+    <div class="diet ${e.s} ${e.mine ? "mine" : ""}">
+      <div class="dn">${e.d.icon} ${esc(e.d.name)}</div>
+      <div class="ds">${STATUS_TXT[e.s]}</div>
+      ${e.x ? `<div class="dx">${esc(e.x)}</div>` : ""}
+    </div>`).join("");
+
+  const csList = (set) => [...set].map((a) => ALLERGEN_CS[a] || a.replace(/-/g, " ")).join(", ");
+  const allergensHtml = `
+    <p class="allg"><b>Obsahuje:</b> ${p.allergens.size ? esc(csList(p.allergens)) : (p.hasIngredients ? "žádný z hlavních alergenů neuveden" : "neznámo")}</p>
+    ${p.traces.size ? `<p class="allg"><b>Může obsahovat stopy:</b> ${esc(csList(p.traces))}</p>` : ""}`;
+
+  const L = p.levels && Object.keys(p.levels).length ? p.levels : levelsFrom(p.nutr);
+  const dot = (k) => L && L[k] ? `<span class="lvl ${L[k]}" title="${{ low: "nízké", moderate: "střední", high: "vysoké" }[L[k]]}"></span>` : "";
+  const hasServ = Object.values(p.serv || {}).some((v) => v != null);
+  const nrow = (label, k, unit, lvlKey, sub, dec = 1) => {
+    const v = p.nutr[k];
+    if (v == null && !(hasServ && p.serv[k] != null)) return "";
+    return `<tr class="${sub ? "sub" : ""}"><td>${label}</td><td class="v">${fmt(v, dec)} ${unit}${lvlKey ? dot(lvlKey) : ""}</td>${hasServ ? `<td>${fmt(p.serv[k], dec)} ${unit}</td>` : ""}</tr>`;
+  };
+  const energyRow = (p.nutr.kj != null || p.nutr.kcal != null)
+    ? `<tr><td>Energie</td><td class="v">${fmt(p.nutr.kcal, 0)} kcal<br><span style="font-weight:500;font-size:0.85rem">${fmt(p.nutr.kj, 0)} kJ</span></td>${hasServ ? `<td>${fmt(p.serv.kcal, 0)} kcal</td>` : ""}</tr>` : "";
+  const nutRows = energyRow +
+    nrow("Tuky", "fat", "g", "fat") + nrow("z toho nasycené", "sat", "g", "saturated-fat", true) +
+    nrow("Sacharidy", "carbs", "g") + nrow("z toho cukry", "sugars", "g", "sugars", true) +
+    nrow("Vláknina", "fiber", "g") + nrow("Bílkoviny", "protein", "g") + nrow("Sůl", "salt", "g", "salt", false, 2);
+
+  const nutCard = nutRows ? `
+    <div class="card">
+      <p class="section-title">Výživové údaje</p>
+      <table class="nut">
+        <thead><tr><th></th><th>na 100 g</th>${hasServ ? `<th>porce${p.servingSize ? " (" + esc(p.servingSize) + ")" : ""}</th>` : ""}</tr></thead>
+        <tbody>${nutRows}</tbody>
+      </table>
+      ${L && Object.values(L).some(Boolean) ? `<div class="lvl-legend"><span class="lvl low"></span> nízké <span class="lvl moderate"></span> střední <span class="lvl high"></span> vysoké množství</div>` : ""}
+      ${p.nutriscore || p.nova ? `<div class="badges">
+        ${p.nutriscore ? `<span class="badge ns-${p.nutriscore}">Nutri-Score ${p.nutriscore.toUpperCase()}</span>` : ""}
+        ${p.nova ? `<span class="badge nova" title="Míra zpracování 1–4">NOVA ${esc(p.nova)}</span>` : ""}
+      </div>` : ""}
+    </div>` : `<div class="card"><p class="section-title">Výživové údaje</p><p>V databázi chybí.</p></div>`;
+
+  const ingrHtml = p.ingredients
+    ? esc(p.ingredients).replace(/_([^_]+)_/g, "<mark>$1</mark>").replace(/\*\*([^*]+)\*\*/g, "<mark>$1</mark>")
+    : "";
+
+  const srcBadge = p.source === "ai"
+    ? `<span class="src">Přečteno z fotky pomocí AI – ověř na obalu</span>`
+    : `<span class="src">Open Food Facts${p.code ? " · " + esc(p.code) : ""}</span>`;
+
+  r.innerHTML = `
+    <div class="card">
+      <div class="prod">
+        ${p.image ? `<img src="${esc(p.image)}" alt="" onerror="this.remove()">` : ""}
+        <div>
+          <h2>${esc(p.name)}</h2>
+          <div class="meta">${esc([p.brand, p.quantity].filter(Boolean).join(" · "))}</div>
+          ${srcBadge}
+        </div>
+      </div>
+    </div>
+    ${verdict}
+    <div class="card">
+      <p class="section-title">Vhodnost</p>
+      <div class="diets">${dietTiles}</div>
+    </div>
+    <div class="card">
+      <p class="section-title">Alergeny</p>
+      ${allergensHtml}
+    </div>
+    ${nutCard}
+    ${ingrHtml ? `<div class="card"><p class="section-title">Složení</p><div class="ingr">${ingrHtml}</div></div>` : ""}
+    ${p.note ? `<div class="card"><p class="section-title">Poznámka</p><p>${esc(p.note)}</p></div>` : ""}
+    <p class="foot">Údaje ${p.source === "ai" ? "přečetla AI z fotky" : "pocházejí z komunitní databáze Open Food Facts"} a nemusí být úplné ani aktuální. Při celiakii nebo alergii vždy ověř složení přímo na obalu.
+    ${p.source === "off" && p.code ? ` <a href="${OFF}/product/${encodeURIComponent(p.code)}" target="_blank" rel="noopener">Otevřít v Open Food Facts</a>` : ""}</p>
+    <button class="btn primary" data-act="${canLive ? "scan" : "home"}">📷 Skenovat další</button>
+    ${canLive ? `<button class="btn" data-act="home">↩︎ Zpět</button>` : ""}
+  `;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- Historie ---------- */
+function addHistory(p) {
+  const h = store.get("history", []).filter((x) => !(x.code && x.code === p.code) && !(x.name === p.name && x.source === p.source));
+  h.unshift({ ...pack(p), t: Date.now() });
+  store.set("history", h.slice(0, 15));
+}
+function renderHistory() {
+  const h = store.get("history", []);
+  $("histCard").hidden = !h.length;
+  $("histList").innerHTML = h.map((x, i) => `<li><button data-i="${i}"><span>${esc(x.name)}</span><span class="t">${new Date(x.t).toLocaleDateString("cs-CZ")}</span></button></li>`).join("");
+}
+$("histList").onclick = (e) => {
+  const b = e.target.closest("[data-i]"); if (!b) return;
+  const x = store.get("history", [])[+b.dataset.i]; if (!x) return;
+  renderProduct(unpack(x));
+};
+
+/* ---------- Databáze Open Food Facts ---------- */
+let dbOk = null; // null = nezjištěno
+async function lookup(code) {
+  code = String(code).replace(/\D/g, "");
+  if (code.length < 6) { showMessage(`<p>Kód <b>${esc(code) || "–"}</b> je moc krátký. Zkus to znovu.</p>`); return; }
+  showBusy("Hledám potravinu " + code + "…");
+  let data;
+  try {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 15000);
+    const res = await fetch(`${OFF}/api/v2/product/${code}.json?fields=${FIELDS}&lc=cs`, { signal: ctl.signal });
+    clearTimeout(tm);
+    if (res.status === 404) data = { status: 0 };
+    else if (!res.ok) throw new Error("HTTP " + res.status);
+    else data = await res.json();
+    dbOk = true;
+  } catch (err) {
+    dbOk = false; updateNotice();
+    showMessage(
+      `<p style="font-size:1.1rem"><b>Kód ${esc(code)}</b></p>
+       <p>Databázi potravin se teď nepodařilo otevřít${aiOk ? " (v této verzi aplikace k ní není přístup)" : " – zkontroluj připojení k internetu"}.</p>
+       <a class="btn" href="${OFF}/product/${code}" target="_blank" rel="noopener">🌐 Otevřít produkt v Open Food Facts</a>`,
+      aiOk ? labelButtonHtml() : "");
+    return;
+  }
+  if (!data || data.status === 0 || !data.product) {
+    showMessage(
+      `<p style="font-size:1.1rem"><b>Kód ${esc(code)}</b> v databázi zatím není.</p>
+       <p class="hint">Produkt můžeš do Open Food Facts přidat a pomoct tak ostatním.</p>`,
+      (aiOk ? labelButtonHtml() : "") +
+      `<a class="btn" href="${OFF}/cgi/product.pl?type=add&code=${code}" target="_blank" rel="noopener">➕ Přidat do databáze</a>`);
+    return;
+  }
+  const p = fromOFF(data.product, code);
+  addHistory(p);
+  renderProduct(p);
+}
+function labelButtonHtml() {
+  return `<label class="btn primary">🏷️ Vyfotit etiketu a nechat ji přečíst
+    <input type="file" accept="image/*" capture="environment" multiple hidden data-label-input></label>`;
+}
+$("result").addEventListener("change", (e) => {
+  if (e.target.matches("[data-label-input]") && e.target.files.length) readLabel([...e.target.files]);
+});
+
+/* ---------- Dekódování čárového kódu ---------- */
+const FORMATS_NATIVE = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"];
+function zxReader() {
+  if (!window.ZXing) return null;
+  const hints = new Map();
+  const F = ZXing.BarcodeFormat;
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  return new ZXing.BrowserMultiFormatReader(hints);
+}
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode(); return img;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+}
+function scaledCanvas(img, maxSide) {
+  const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+async function decodePhoto(file) {
+  const img = await loadImage(file);
+  if ("BarcodeDetector" in window) {
+    try {
+      const det = new BarcodeDetector({ formats: FORMATS_NATIVE });
+      const r = await det.detect(img);
+      if (r && r.length) return r[0].rawValue;
+    } catch {}
+  }
+  const reader = zxReader();
+  if (!reader) throw new Error("no-lib");
+  for (const side of [1400, 900, 2000]) {
+    try {
+      const res = await reader.decodeFromImageUrl(scaledCanvas(img, side).toDataURL("image/jpeg", 0.92));
+      if (res) return res.getText();
+    } catch {}
+  }
+  return null;
+}
+$("photoInput").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  showBusy("Čtu čárový kód z fotky…");
+  try {
+    const code = await decodePhoto(f);
+    if (code) lookup(code);
+    else showMessage(`<p style="font-size:1.1rem">Čárový kód se na fotce nepodařilo přečíst.</p>
+      <p class="hint">Vyfoť kód zblízka, ostře a bez odlesků, nebo napiš čísla pod ním ručně.</p>`);
+  } catch {
+    showMessage(`<p>Čtečku kódů se nepodařilo načíst. Napiš prosím čísla pod kódem ručně.</p>`);
+  }
+};
+$("manualForm").onsubmit = (e) => {
+  e.preventDefault(); const v = $("manualCode").value.trim(); if (!v) return;
+  $("manualCode").value = ""; $("manualCode").blur(); lookup(v);
+};
+
+/* ---------- Živé skenování kamerou ---------- */
+let canLive = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+try {
+  const pol = document.permissionsPolicy || document.featurePolicy;
+  if (pol && typeof pol.allowsFeature === "function" && !pol.allowsFeature("camera")) canLive = false;
+} catch {}
+let liveReader = null, liveStream = null, liveTimer = null, liveDone = false;
+function stopLive() {
+  liveDone = true;
+  try { liveReader && liveReader.reset(); } catch {}
+  liveReader = null;
+  if (liveTimer) { cancelAnimationFrame(liveTimer); liveTimer = null; }
+  if (liveStream) { liveStream.getTracks().forEach((t) => t.stop()); liveStream = null; }
+  const v = $("video"); v.srcObject = null;
+  $("scanner").hidden = true;
+}
+function onLiveCode(code) {
+  if (liveDone) return;
+  stopLive();
+  try { navigator.vibrate && navigator.vibrate(80); } catch {}
+  lookup(code);
+}
+async function startLive() {
+  if (!canLive) { $("photoInput").click(); return; }
+  liveDone = false;
+  $("scanner").hidden = false; $("scanMsg").textContent = "Spouštím kameru…";
+  const video = $("video");
+  try {
+    const constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
+    if ("BarcodeDetector" in window) {
+      let det;
+      try {
+        const supported = await BarcodeDetector.getSupportedFormats();
+        det = new BarcodeDetector({ formats: FORMATS_NATIVE.filter((f) => supported.includes(f)) });
+      } catch { det = null; }
+      if (det) {
+        liveStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = liveStream; await video.play();
+        $("scanMsg").textContent = "Namiř kameru na čárový kód";
+        let busy = false;
+        const loop = async () => {
+          if (liveDone) return;
+          if (!busy && video.readyState >= 2) {
+            busy = true;
+            try { const r = await det.detect(video); if (r.length) { onLiveCode(r[0].rawValue); return; } } catch {}
+            busy = false;
+          }
+          liveTimer = requestAnimationFrame(loop);
+        };
+        loop();
+        return;
+      }
+    }
+    liveReader = zxReader();
+    if (!liveReader) throw new Error("no-lib");
+    await liveReader.decodeFromConstraints(constraints, video, (res) => { if (res) onLiveCode(res.getText()); });
+    liveStream = video.srcObject;
+    $("scanMsg").textContent = "Namiř kameru na čárový kód";
+  } catch (err) {
+    stopLive();
+    canLive = false; updateLiveButton();
+    showMessage(`<p style="font-size:1.1rem">Kameru se nepodařilo spustit.</p>
+      <p class="hint">Povol aplikaci přístup ke kameře, nebo použij „Vyfotit čárový kód“ – otevře se běžný fotoaparát.</p>`,
+      `<label class="btn primary">🖼️ Vyfotit čárový kód<input type="file" accept="image/*" capture="environment" hidden data-photo-input></label>`);
+  }
+}
+$("result").addEventListener("change", (e) => {
+  if (e.target.matches("[data-photo-input]") && e.target.files.length) {
+    const ev = { target: { files: e.target.files, value: "" } };
+    $("photoInput").onchange(ev);
+  }
+});
+$("btnLive").onclick = startLive;
+$("scanCancel").onclick = stopLive;
+function updateLiveButton() { $("btnLive").hidden = !canLive; if (!canLive) $("btnPhotoLbl").classList.add("primary"); }
+updateLiveButton();
+
+/* ---------- Čtení etikety pomocí Clauda (jen ve verzi na claude.ai) ---------- */
+let aiOk = false, sampleFn = null;
+const AI_PROMPT = `Jsi asistent pro lidi s potravinovými intolerancemi. Na přiložených fotkách je obal potraviny (složení, výživové údaje, případně přední strana).
+Přečti z fotek, co na nich skutečně je. Nic nedomýšlej – co nejde přečíst, dej null.
+Odpověz POUZE jedním JSON objektem bez dalšího textu, v tomto tvaru:
+{
+ "name": "název výrobku nebo null",
+ "brand": "značka nebo null",
+ "quantity": "hmotnost/objem nebo null",
+ "ingredients": "celé složení v češtině tak, jak je na obalu; alergeny zvýrazněné na obalu obal do podtržítek, např. _pšeničná mouka_; null pokud složení na fotce není",
+ "allergens": ["seznam alergenů obsažených ve složení, jen z těchto klíčů: gluten, milk, eggs, nuts, peanuts, soybeans, fish, crustaceans, molluscs, celery, mustard, sesame-seeds, sulphur-dioxide-and-sulphites, lupin"],
+ "traces": ["alergeny z upozornění typu 'může obsahovat stopy', stejné klíče"],
+ "labels": ["označení přímo na obalu, jen z těchto klíčů: gluten-free, lactose-free, vegan, vegetarian, no-milk"],
+ "vegan": "yes | no | maybe | unknown",
+ "vegetarian": "yes | no | maybe | unknown",
+ "nutrition_100g": {"kj": číslo|null, "kcal": číslo|null, "fat": číslo|null, "sat": číslo|null, "carbs": číslo|null, "sugars": číslo|null, "fiber": číslo|null, "protein": číslo|null, "salt": číslo|null},
+ "note": "krátká česká poznámka (max 2 věty), např. že lepek obsahují pšenice, žito, ječmen a oves, nebo že část etikety nebyla čitelná; jinak null"
+}
+Lepek obsahují: pšenice (vč. špaldy, kamutu), žito, ječmen, oves a výrobky z nich. Mléko zahrnuje i syrovátku, kasein, laktózu, máslo, smetanu, sýr.`;
+
+async function initAI() {
+  if (!window.claude || typeof window.claude.use !== "function") return;
+  try {
+    const s = await window.claude.use("sample");
+    if (!s) return;
+    let imagesOk = true;
+    try { if (typeof s.limits === "function") { const l = await s.limits(); imagesOk = !!(l && l.images); } } catch {}
+    if (!imagesOk) return;
+    sampleFn = s; aiOk = true;
+    $("btnLabelLbl").hidden = false; $("labelHint").hidden = false;
+    updateNotice();
+  } catch {}
+}
+async function toJpegBlob(file, maxSide = 1600) {
+  const img = await loadImage(file);
+  const c = scaledCanvas(img, maxSide);
+  return await new Promise((res) => c.toBlob(res, "image/jpeg", 0.85));
+}
+function extractJSON(t) {
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b < a) throw new Error("no-json");
+  return JSON.parse(t.slice(a, b + 1));
+}
+async function readLabel(files) {
+  if (!sampleFn) return;
+  showBusy("Claude čte etiketu… (chvilku to trvá)");
+  try {
+    const images = await Promise.all(files.slice(0, 4).map((f) => toJpegBlob(f)));
+    const res = await sampleFn(AI_PROMPT, { images, modelTier: "default" });
+    const j = extractJSON(res.text || "");
+    const nutrIn = j.nutrition_100g || {};
+    const nutr = {};
+    for (const k of ["kj", "kcal", "fat", "sat", "carbs", "sugars", "fiber", "protein", "salt"]) {
+      const v = nutrIn[k]; nutr[k] = v == null || v === "" || isNaN(+v) ? null : +v;
+    }
+    if (nutr.kcal == null && nutr.kj != null) nutr.kcal = Math.round(nutr.kj / 4.184);
+    const tri = (v) => ["yes", "no", "maybe"].includes(v) ? v : "unknown";
+    const labels = new Set(Array.isArray(j.labels) ? j.labels : []);
+    const p = {
+      source: "ai", code: "",
+      name: j.name || "Potravina z fotky", brand: j.brand || "", quantity: j.quantity || "", image: "",
+      ingredients: j.ingredients || "",
+      allergens: new Set(Array.isArray(j.allergens) ? j.allergens : []),
+      traces: new Set(Array.isArray(j.traces) ? j.traces : []),
+      labels, vegan: labels.has("vegan") ? "yes" : tri(j.vegan), vegetarian: labels.has("vegetarian") || labels.has("vegan") ? "yes" : tri(j.vegetarian),
+      hasIngredients: !!(j.ingredients && String(j.ingredients).trim()),
+      nutr, serv: {}, servingSize: "", levels: null, nutriscore: "", nova: "",
+      note: j.note || "",
+    };
+    addHistory(p);
+    renderProduct(p);
+  } catch (err) {
+    if (err && err.code === "not_granted") { aiOk = false; $("btnLabelLbl").hidden = true; $("labelHint").hidden = true; }
+    const msg = err && err.code === "rate_limited" ? "Moc požadavků najednou – zkus to prosím za chvilku."
+      : err && err.code === "not_granted" ? "Čtení etiket nebylo povoleno."
+      : "Etiketu se nepodařilo přečíst. Zkus ostřejší fotku se složením i tabulkou.";
+    showMessage(`<p style="font-size:1.1rem">${esc(msg)}</p>`, aiOk ? labelButtonHtml() : "");
+  }
+}
+$("labelInput").onchange = (e) => {
+  const fl = [...e.target.files]; e.target.value = ""; if (fl.length) readLabel(fl);
+};
+
+/* ---------- Upozornění na dostupnost databáze ---------- */
+function updateNotice() {
+  const n = $("dbNotice");
+  if (dbOk === false) {
+    n.hidden = false;
+    n.innerHTML = aiOk
+      ? "ℹ️ V této verzi se databáze potravin nedá otevřít. Kód přečtu, ale údaje získáš nejlépe tlačítkem <b>Vyfotit etiketu</b>."
+      : "⚠️ Databázi potravin se nepodařilo otevřít. Zkontroluj připojení k internetu.";
+    if (aiOk) {
+      const lbl = $("btnLabelLbl");
+      lbl.classList.add("primary"); lbl.style.marginTop = "0";
+      lbl.parentNode.insertBefore(lbl, lbl.parentNode.firstChild);
+      lbl.after($("labelHint"));
+      $("btnLive").classList.remove("primary"); $("btnPhotoLbl").classList.remove("primary");
+    }
+  } else n.hidden = true;
+}
+async function probeDb() {
+  try {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`${OFF}/api/v2/product/3017620422003.json?fields=code`, { signal: ctl.signal });
+    clearTimeout(tm); dbOk = r.ok || r.status === 404;
+  } catch { dbOk = false; }
+  updateNotice();
+}
+
+renderHistory();
+initAI();
+probeDb();
+})();
+</script>
+</body>
+</html>
